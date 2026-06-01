@@ -46,6 +46,13 @@ jobs:
           fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git stash push --include-untracked -- dune/state
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git stash pop
+          if [ -z "$(git status --porcelain -- dune/state)" ]; then
+            echo "No checkpoint changes after rebase."
+            exit 0
+          fi
           git add dune/state
           git commit -m "Update Dune upload table checkpoint [skip ci]"
           git push
