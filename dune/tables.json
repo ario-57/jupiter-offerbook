@@ -43,6 +43,30 @@
         { "name": "apy", "type": "double", "nullable": true },
         { "name": "loan_type", "type": "bigint", "nullable": true }
       ]
+    },
+    {
+      "table_name": "fill_nft_collateral_offer",
+      "query_file": "dune/queries/fill_nft_collateral_offer.sql",
+      "description": "Fill NFT Collateral Offer events ingested from solana.instruction_calls in historical and refresh windows.",
+      "start_at": "2026-03-26T00:00:00Z",
+      "backfill_window_days": 5,
+      "refresh_window_days": 1,
+      "is_private": false,
+      "schema": [
+        { "name": "offer", "type": "varchar", "nullable": true },
+        { "name": "pubkey", "type": "varchar", "nullable": true },
+        { "name": "block_time", "type": "timestamp", "nullable": false },
+        { "name": "lender", "type": "varchar", "nullable": true },
+        { "name": "borrower", "type": "varchar", "nullable": true },
+        { "name": "principal_mint_address", "type": "varchar", "nullable": true },
+        { "name": "collateral_mint_address", "type": "varchar", "nullable": true },
+        { "name": "principal_amount", "type": "double", "nullable": true },
+        { "name": "collateral_amount", "type": "bigint", "nullable": true },
+        { "name": "interest", "type": "bigint", "nullable": true },
+        { "name": "duration_hour", "type": "double", "nullable": true },
+        { "name": "apy", "type": "double", "nullable": true },
+        { "name": "loan_type_enum", "type": "bigint", "nullable": true }
+      ]
     }
   ]
 }
