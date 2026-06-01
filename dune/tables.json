@@ -21,7 +21,7 @@
       ]
     },
     {
-      "table_name": "Fill_Token_Principal_Offer",
+      "table_name": "fill_token_principal_offer",
       "query_file": "dune/queries/fill_token_principal_offer.sql",
       "description": "Fill Token Principal Offer events ingested from solana.instruction_calls in 24-hour windows.",
       "start_at": "2026-03-26T00:00:00Z",
