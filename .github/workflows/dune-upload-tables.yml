@@ -1,0 +1,45 @@
+name: Update Dune upload tables
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: dune-upload-tables
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Backfill and append Dune upload tables
+        env:
+          DUNE_API_KEY: ${{ secrets.DUNE_API_KEY }}
+          DUNE_NAMESPACE: ${{ secrets.DUNE_NAMESPACE }}
+        run: python scripts/update_dune_upload_tables.py
+
+      - name: Commit checkpoint
+        run: |
+          if [ -z "$(git status --porcelain -- dune/state)" ]; then
+            echo "No checkpoint changes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add dune/state
+          git commit -m "Update Dune upload table checkpoint"
+          git push

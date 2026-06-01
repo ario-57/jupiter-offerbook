@@ -1,0 +1,24 @@
+{
+  "tables": [
+    {
+      "table_name": "fill_token_collateral_offer",
+      "query_file": "dune/queries/fill_token_collateral_offer.sql",
+      "description": "Fill Token Collateral Offer events ingested from solana.instruction_calls in 24-hour windows.",
+      "start_at": "2026-03-26T00:00:00Z",
+      "is_private": false,
+      "schema": [
+        { "name": "loan", "type": "varchar", "nullable": true },
+        { "name": "block_time", "type": "timestamp", "nullable": false },
+        { "name": "lender", "type": "varchar", "nullable": true },
+        { "name": "borrower", "type": "varchar", "nullable": true },
+        { "name": "principal_mint_address", "type": "varchar", "nullable": true },
+        { "name": "collateral_mint_address", "type": "varchar", "nullable": true },
+        { "name": "collateral_fill_amount", "type": "bigint", "nullable": true },
+        { "name": "max_principal", "type": "double", "nullable": true },
+        { "name": "duration_hour", "type": "double", "nullable": true },
+        { "name": "apy", "type": "double", "nullable": true },
+        { "name": "loan_type", "type": "bigint", "nullable": true }
+      ]
+    }
+  ]
+}
