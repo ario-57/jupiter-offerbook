@@ -12,7 +12,8 @@ from urllib.request import Request, urlopen
 
 
 API_BASE = "https://api.dune.com/api/v1"
-WINDOW = timedelta(days=1)
+DEFAULT_BACKFILL_WINDOW_DAYS = 5
+DEFAULT_REFRESH_WINDOW_DAYS = 1
 POLL_SECONDS = 10
 MAX_POLLS = 180
 
@@ -160,6 +161,15 @@ def read_checkpoint(path, table):
     return parse_time(table["start_at"])
 
 
+def choose_window(table, start_at, now):
+    backfill_window = timedelta(days=table.get("backfill_window_days", DEFAULT_BACKFILL_WINDOW_DAYS))
+    refresh_window = timedelta(days=table.get("refresh_window_days", DEFAULT_REFRESH_WINDOW_DAYS))
+    remaining = now - start_at
+    if remaining > backfill_window:
+        return backfill_window, "historical backfill"
+    return refresh_window, "24-hour refresh"
+
+
 def write_checkpoint(path, table, next_start_at):
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
@@ -188,24 +198,28 @@ def process_table(root, table, namespace, api_key):
     append_summary("")
     append_summary(f"Checkpoint start: `{format_time(start_at)}`")
     append_summary(f"Run target end: `{format_time(now)}`")
+    append_summary(f"Historical window: `{table.get('backfill_window_days', DEFAULT_BACKFILL_WINDOW_DAYS)} days`")
+    append_summary(f"Refresh window: `{table.get('refresh_window_days', DEFAULT_REFRESH_WINDOW_DAYS)} day`")
     append_summary("")
-    append_summary("| Window start | Window end | Execution ID | Rows inserted |")
-    append_summary("| --- | --- | --- | ---: |")
+    append_summary("| Mode | Window start | Window end | Execution ID | Rows inserted |")
+    append_summary("| --- | --- | --- | --- | ---: |")
 
     if start_at >= now:
         message = f"{table['table_name']}: nothing to ingest."
         notice(message)
-        append_summary(f"| {format_time(start_at)} | {format_time(now)} | n/a | 0 |")
+        append_summary(f"| n/a | {format_time(start_at)} | {format_time(now)} | n/a | 0 |")
         return
 
     while start_at < now:
-        end_at = min(start_at + WINDOW, now)
+        window, mode = choose_window(table, start_at, now)
+        end_at = min(start_at + window, now)
         start_label = format_time(start_at)
         end_label = format_time(end_at)
         sql = render_sql(query_template, start_at, end_at)
 
-        notice(f"Starting {table['table_name']} window: {start_label} -> {end_label}")
-        log(f"::group::{table['table_name']} {start_label} to {end_label}")
+        notice(f"Starting {table['table_name']} {mode} window: {start_label} -> {end_label}")
+        log(f"::group::{table['table_name']} {mode}: {start_label} to {end_label}")
+        log(f"Mode: {mode}")
         log(f"Timeframe start: {start_label}")
         log(f"Timeframe end:   {end_label}")
 
@@ -217,8 +231,8 @@ def process_table(root, table, namespace, api_key):
 
         log(f"Rows inserted: {rows_written}")
         log("::endgroup::")
-        notice(f"Finished {table['table_name']} window: {start_label} -> {end_label}; inserted {rows_written} rows")
-        append_summary(f"| `{start_label}` | `{end_label}` | `{execution_id}` | {rows_written} |")
+        notice(f"Finished {table['table_name']} {mode} window: {start_label} -> {end_label}; inserted {rows_written} rows")
+        append_summary(f"| {mode} | `{start_label}` | `{end_label}` | `{execution_id}` | {rows_written} |")
 
         start_at = end_at
         write_checkpoint(state_path, table, start_at)
