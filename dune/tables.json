@@ -3,8 +3,10 @@
     {
       "table_name": "fill_token_collateral_offer",
       "query_file": "dune/queries/fill_token_collateral_offer.sql",
-      "description": "Fill Token Collateral Offer events ingested from solana.instruction_calls in 24-hour windows.",
+      "description": "Fill Token Collateral Offer events ingested from solana.instruction_calls in historical and refresh windows.",
       "start_at": "2026-03-26T00:00:00Z",
+      "backfill_window_days": 5,
+      "refresh_window_days": 1,
       "is_private": false,
       "schema": [
         { "name": "loan", "type": "varchar", "nullable": true },
@@ -23,8 +25,10 @@
     {
       "table_name": "fill_token_principal_offer",
       "query_file": "dune/queries/fill_token_principal_offer.sql",
-      "description": "Fill Token Principal Offer events ingested from solana.instruction_calls in 24-hour windows.",
+      "description": "Fill Token Principal Offer events ingested from solana.instruction_calls in historical and refresh windows.",
       "start_at": "2026-03-26T00:00:00Z",
+      "backfill_window_days": 5,
+      "refresh_window_days": 1,
       "is_private": false,
       "schema": [
         { "name": "loan", "type": "varchar", "nullable": true },
