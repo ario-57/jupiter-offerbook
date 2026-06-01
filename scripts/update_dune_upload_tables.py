@@ -29,6 +29,22 @@ def sql_timestamp(value):
     return value.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def log(message):
+    print(message, flush=True)
+
+
+def notice(message):
+    log(f"::notice::{message}")
+
+
+def append_summary(line):
+    summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+    if not summary_path:
+        return
+    with open(summary_path, "a", encoding="utf-8") as summary:
+        summary.write(line + "\n")
+
+
 def request(method, path, api_key, body=None, content_type="application/json"):
     headers = {"X-Dune-Api-Key": api_key}
     data = None
@@ -67,10 +83,10 @@ def create_table(table, namespace, api_key):
     except RuntimeError as error:
         message = str(error).lower()
         if "already" in message or "exists" in message:
-            print(f"{namespace}.{table['table_name']} already exists.")
+            log(f"{namespace}.{table['table_name']} already exists.")
             return
         raise
-    print(result.get("message") or f"Created {namespace}.{table['table_name']}.")
+    log(result.get("message") or f"Created {namespace}.{table['table_name']}.")
 
 
 def render_sql(template, start_at, end_at):
@@ -95,6 +111,7 @@ def fetch_all_rows(execution_id, api_key):
         state = result.get("state")
 
         if state in {"QUERY_STATE_PENDING", "QUERY_STATE_EXECUTING"}:
+            log(f"Execution {execution_id} is {state}; polling again in {POLL_SECONDS}s.")
             time.sleep(POLL_SECONDS)
             continue
         if state != "QUERY_STATE_COMPLETED":
@@ -167,23 +184,42 @@ def process_table(root, table, namespace, api_key):
     start_at = read_checkpoint(state_path, table)
     now = datetime.now(timezone.utc).replace(microsecond=0)
 
+    append_summary(f"## {table['table_name']}")
+    append_summary("")
+    append_summary(f"Checkpoint start: `{format_time(start_at)}`")
+    append_summary(f"Run target end: `{format_time(now)}`")
+    append_summary("")
+    append_summary("| Window start | Window end | Execution ID | Rows inserted |")
+    append_summary("| --- | --- | --- | ---: |")
+
     if start_at >= now:
-        print(f"{table['table_name']}: nothing to ingest.")
+        message = f"{table['table_name']}: nothing to ingest."
+        notice(message)
+        append_summary(f"| {format_time(start_at)} | {format_time(now)} | n/a | 0 |")
         return
 
     while start_at < now:
         end_at = min(start_at + WINDOW, now)
+        start_label = format_time(start_at)
+        end_label = format_time(end_at)
         sql = render_sql(query_template, start_at, end_at)
-        print(f"{table['table_name']}: querying {format_time(start_at)} to {format_time(end_at)}")
+
+        notice(f"Starting {table['table_name']} window: {start_label} -> {end_label}")
+        log(f"::group::{table['table_name']} {start_label} to {end_label}")
+        log(f"Timeframe start: {start_label}")
+        log(f"Timeframe end:   {end_label}")
 
         execution_id = execute_sql(sql, table.get("performance"), api_key)
+        log(f"Dune execution ID: {execution_id}")
         rows = fetch_all_rows(execution_id, api_key)
         result = insert_rows(table, namespace, rows, api_key)
+        rows_written = result.get("rows_written", len(rows))
 
-        print(
-            f"{table['table_name']}: inserted {result.get('rows_written', len(rows))} rows "
-            f"for {format_time(start_at)} to {format_time(end_at)}"
-        )
+        log(f"Rows inserted: {rows_written}")
+        log("::endgroup::")
+        notice(f"Finished {table['table_name']} window: {start_label} -> {end_label}; inserted {rows_written} rows")
+        append_summary(f"| `{start_label}` | `{end_label}` | `{execution_id}` | {rows_written} |")
+
         start_at = end_at
         write_checkpoint(state_path, table, start_at)
 
