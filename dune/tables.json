@@ -49,7 +49,7 @@
       "query_file": "dune/queries/fill_nft_collateral_offer.sql",
       "description": "Fill NFT Collateral Offer events ingested from solana.instruction_calls in historical and refresh windows.",
       "start_at": "2026-04-26T00:00:00Z",
-      "backfill_window_days": 1,
+      "backfill_window_days": 5,
       "refresh_window_days": 1,
       "is_private": false,
       "schema": [
