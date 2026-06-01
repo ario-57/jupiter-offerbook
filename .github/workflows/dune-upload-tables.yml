@@ -4,6 +4,12 @@ on:
   workflow_dispatch:
   schedule:
     - cron: "0 0 * * *"
+  push:
+    paths:
+      - ".github/workflows/dune-upload-tables.yml"
+      - "dune/tables.json"
+      - "dune/queries/**"
+      - "scripts/update_dune_upload_tables.py"
 
 permissions:
   contents: write
@@ -41,5 +47,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add dune/state
-          git commit -m "Update Dune upload table checkpoint"
+          git commit -m "Update Dune upload table checkpoint [skip ci]"
           git push
