@@ -41,6 +41,47 @@
         { "name": "pubkey", "type": "varchar", "nullable": true },
         { "name": "inserted_at", "type": "timestamp", "nullable": false }
       ]
+    },
+    {
+      "table_name": "loan_repaid",
+      "query_file": "dune/queries/loan_repaid.sql",
+      "description": "Loan repaid events ingested from solana.instruction_calls. Initial run backfills once from March 31, 2026 to now; scheduled refreshes use 24-hour windows.",
+      "start_at": "2026-03-31T00:00:00Z",
+      "backfill_once_until_now": true,
+      "refresh_window_days": 1,
+      "is_private": false,
+      "schema": [
+        { "name": "block_time", "type": "timestamp", "nullable": false },
+        { "name": "tx_id", "type": "varchar", "nullable": false },
+        { "name": "outer_instruction_index", "type": "bigint", "nullable": true },
+        { "name": "inner_instruction_index", "type": "bigint", "nullable": true },
+        { "name": "lender", "type": "varchar", "nullable": true },
+        { "name": "borrower", "type": "varchar", "nullable": true },
+        { "name": "creator", "type": "varchar", "nullable": true },
+        { "name": "offer", "type": "varchar", "nullable": true },
+        { "name": "status_id", "type": "bigint", "nullable": true },
+        { "name": "fill_index", "type": "varchar", "nullable": true },
+        { "name": "principal_kind", "type": "bigint", "nullable": true },
+        { "name": "principal_mint", "type": "varchar", "nullable": true },
+        { "name": "principal_token_program", "type": "varchar", "nullable": true },
+        { "name": "collateral_kind", "type": "bigint", "nullable": true },
+        { "name": "collateral_mint", "type": "varchar", "nullable": true },
+        { "name": "collateral_token_program", "type": "varchar", "nullable": true },
+        { "name": "collateral_core_asset", "type": "varchar", "nullable": true },
+        { "name": "apy", "type": "bigint", "nullable": true },
+        { "name": "duration", "type": "bigint", "nullable": true },
+        { "name": "principal_amount", "type": "varchar", "nullable": true },
+        { "name": "collateral_amount", "type": "varchar", "nullable": true },
+        { "name": "interest", "type": "varchar", "nullable": true },
+        { "name": "created_at", "type": "varchar", "nullable": true },
+        { "name": "expired_at", "type": "varchar", "nullable": true },
+        { "name": "updated_at", "type": "varchar", "nullable": true },
+        { "name": "bump", "type": "bigint", "nullable": true },
+        { "name": "collateral_account_bump", "type": "bigint", "nullable": true },
+        { "name": "loan_type_id", "type": "bigint", "nullable": true },
+        { "name": "pubkey", "type": "varchar", "nullable": true },
+        { "name": "inserted_at", "type": "timestamp", "nullable": false }
+      ]
     }
   ]
 }
