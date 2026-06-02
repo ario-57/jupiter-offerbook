@@ -127,12 +127,16 @@ def fetch_all_rows(execution_id, api_key):
     raise RuntimeError(f"Execution {execution_id} did not finish after {MAX_POLLS * POLL_SECONDS} seconds.")
 
 
-def rows_to_csv(rows, columns):
+def rows_to_csv(rows, columns, inserted_at):
     output = io.StringIO()
     writer = csv.DictWriter(output, fieldnames=columns, extrasaction="ignore", lineterminator="\n")
     writer.writeheader()
+    inserted_at_value = sql_timestamp(inserted_at)
     for row in rows:
-        writer.writerow({column: row.get(column) for column in columns})
+        csv_row = {column: row.get(column) for column in columns}
+        if "inserted_at" in columns and not csv_row.get("inserted_at"):
+            csv_row["inserted_at"] = inserted_at_value
+        writer.writerow(csv_row)
     return output.getvalue()
 
 
@@ -141,7 +145,7 @@ def insert_rows(table, namespace, rows, api_key):
         return {"rows_written": 0}
 
     columns = [column["name"] for column in table["schema"]]
-    csv_body = rows_to_csv(rows, columns)
+    csv_body = rows_to_csv(rows, columns, datetime.now(timezone.utc))
     namespace_q = quote(namespace, safe="")
     table_q = quote(table["table_name"], safe="")
     return request(
@@ -161,7 +165,10 @@ def read_checkpoint(path, table):
     return parse_time(table["start_at"])
 
 
-def choose_window(table, start_at, now):
+def choose_window(table, start_at, now, has_checkpoint):
+    if table.get("backfill_once_until_now") and not has_checkpoint:
+        return now - start_at, "one-shot historical backfill"
+
     backfill_window = timedelta(days=table.get("backfill_window_days", DEFAULT_BACKFILL_WINDOW_DAYS))
     refresh_window = timedelta(days=table.get("refresh_window_days", DEFAULT_REFRESH_WINDOW_DAYS))
     remaining = now - start_at
@@ -191,6 +198,7 @@ def process_table(root, table, namespace, api_key):
 
     state_path = root / "dune" / "state" / f"{table['table_name']}.json"
     query_template = (root / table["query_file"]).read_text(encoding="utf-8")
+    has_checkpoint = state_path.exists()
     start_at = read_checkpoint(state_path, table)
     now = datetime.now(timezone.utc).replace(microsecond=0)
 
@@ -198,7 +206,7 @@ def process_table(root, table, namespace, api_key):
     append_summary("")
     append_summary(f"Checkpoint start: `{format_time(start_at)}`")
     append_summary(f"Run target end: `{format_time(now)}`")
-    append_summary(f"Historical window: `{table.get('backfill_window_days', DEFAULT_BACKFILL_WINDOW_DAYS)} days`")
+    append_summary(f"One-shot historical backfill: `{str(table.get('backfill_once_until_now', False)).lower()}`")
     append_summary(f"Refresh window: `{table.get('refresh_window_days', DEFAULT_REFRESH_WINDOW_DAYS)} day`")
     append_summary("")
     append_summary("| Mode | Window start | Window end | Execution ID | Rows inserted |")
@@ -211,7 +219,7 @@ def process_table(root, table, namespace, api_key):
         return
 
     while start_at < now:
-        window, mode = choose_window(table, start_at, now)
+        window, mode = choose_window(table, start_at, now, has_checkpoint)
         end_at = min(start_at + window, now)
         start_label = format_time(start_at)
         end_label = format_time(end_at)
@@ -236,6 +244,7 @@ def process_table(root, table, namespace, api_key):
 
         start_at = end_at
         write_checkpoint(state_path, table, start_at)
+        has_checkpoint = True
 
 
 def main():
