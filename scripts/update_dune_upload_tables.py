@@ -104,29 +104,37 @@ def execute_sql(sql, performance, api_key):
     return response["execution_id"]
 
 
+def wait_for_execution(execution_id, api_key):
+    for _ in range(MAX_POLLS):
+        result = request("GET", f"/execution/{execution_id}/status", api_key)
+        state = result.get("state") or result.get("execution_state")
+
+        if state in {"QUERY_STATE_PENDING", "QUERY_STATE_EXECUTING"}:
+            log(f"Execution {execution_id} is {state}; checking status again in {POLL_SECONDS}s.")
+            time.sleep(POLL_SECONDS)
+            continue
+        if state == "QUERY_STATE_COMPLETED":
+            return
+
+        raise RuntimeError(f"Execution {execution_id} ended with state {state}: {result.get('error')}")
+
+    raise RuntimeError(f"Execution {execution_id} did not finish after {MAX_POLLS * POLL_SECONDS} seconds.")
+
+
 def fetch_all_rows(execution_id, api_key):
+    wait_for_execution(execution_id, api_key)
+
     offset = 0
     rows = []
 
-    for _ in range(MAX_POLLS):
+    while True:
         query = urlencode({"limit": 1000, "offset": offset})
         result = request("GET", f"/execution/{execution_id}/results?{query}", api_key)
-        state = result.get("state")
-
-        if state in {"QUERY_STATE_PENDING", "QUERY_STATE_EXECUTING"}:
-            log(f"Execution {execution_id} is {state}; polling again in {POLL_SECONDS}s.")
-            time.sleep(POLL_SECONDS)
-            continue
-        if state != "QUERY_STATE_COMPLETED":
-            raise RuntimeError(f"Execution {execution_id} ended with state {state}: {result.get('error')}")
-
         rows.extend(result.get("result", {}).get("rows", []))
         next_offset = result.get("next_offset")
         if next_offset is None:
             return rows
         offset = next_offset
-
-    raise RuntimeError(f"Execution {execution_id} did not finish after {MAX_POLLS * POLL_SECONDS} seconds.")
 
 
 def rows_to_csv(rows, columns, inserted_at):
