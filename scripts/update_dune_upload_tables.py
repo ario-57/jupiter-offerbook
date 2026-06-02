@@ -19,6 +19,8 @@ MAX_POLLS = 180
 
 
 def parse_time(value):
+    if value == "now":
+        return datetime.now(timezone.utc).replace(microsecond=0)
     return datetime.fromisoformat(value.replace("Z", "+00:00")).astimezone(timezone.utc)
 
 
@@ -165,6 +167,16 @@ def read_checkpoint(path, table):
     return parse_time(table["start_at"])
 
 
+def configured_historical_windows(table, now):
+    windows = []
+    for window in table.get("historical_windows", []):
+        start_at = parse_time(window["start_at"])
+        end_at = now if window["end_at"] == "now" else parse_time(window["end_at"])
+        if start_at < end_at:
+            windows.append((start_at, min(end_at, now), window.get("label", "configured historical backfill")))
+    return windows
+
+
 def choose_window(table, start_at, now, has_checkpoint):
     if table.get("backfill_once_until_now") and not has_checkpoint:
         return now - start_at, "one-shot historical backfill"
@@ -193,6 +205,30 @@ def write_checkpoint(path, table, next_start_at):
     )
 
 
+def ingest_window(table, query_template, namespace, api_key, start_at, end_at, mode):
+    start_label = format_time(start_at)
+    end_label = format_time(end_at)
+    sql = render_sql(query_template, start_at, end_at)
+
+    notice(f"Starting {table['table_name']} {mode} window: {start_label} -> {end_label}")
+    log(f"::group::{table['table_name']} {mode}: {start_label} to {end_label}")
+    log(f"Mode: {mode}")
+    log(f"Timeframe start: {start_label}")
+    log(f"Timeframe end:   {end_label}")
+
+    execution_id = execute_sql(sql, table.get("performance"), api_key)
+    log(f"Dune execution ID: {execution_id}")
+    rows = fetch_all_rows(execution_id, api_key)
+    result = insert_rows(table, namespace, rows, api_key)
+    rows_written = result.get("rows_written", len(rows))
+
+    log(f"Rows inserted: {rows_written}")
+    log("::endgroup::")
+    notice(f"Finished {table['table_name']} {mode} window: {start_label} -> {end_label}; inserted {rows_written} rows")
+    append_summary(f"| {mode} | `{start_label}` | `{end_label}` | `{execution_id}` | {rows_written} |")
+    return rows_written
+
+
 def process_table(root, table, namespace, api_key):
     create_table(table, namespace, api_key)
 
@@ -206,11 +242,22 @@ def process_table(root, table, namespace, api_key):
     append_summary("")
     append_summary(f"Checkpoint start: `{format_time(start_at)}`")
     append_summary(f"Run target end: `{format_time(now)}`")
+    append_summary(f"Configured historical windows: `{len(table.get('historical_windows', []))}`")
     append_summary(f"One-shot historical backfill: `{str(table.get('backfill_once_until_now', False)).lower()}`")
     append_summary(f"Refresh window: `{table.get('refresh_window_days', DEFAULT_REFRESH_WINDOW_DAYS)} day`")
     append_summary("")
     append_summary("| Mode | Window start | Window end | Execution ID | Rows inserted |")
     append_summary("| --- | --- | --- | --- | ---: |")
+
+    if not has_checkpoint and table.get("historical_windows"):
+        last_end_at = start_at
+        for window_start, window_end, mode in configured_historical_windows(table, now):
+            if window_start >= now:
+                continue
+            ingest_window(table, query_template, namespace, api_key, window_start, window_end, mode)
+            last_end_at = max(last_end_at, window_end)
+            write_checkpoint(state_path, table, last_end_at)
+        return
 
     if start_at >= now:
         message = f"{table['table_name']}: nothing to ingest."
@@ -221,27 +268,7 @@ def process_table(root, table, namespace, api_key):
     while start_at < now:
         window, mode = choose_window(table, start_at, now, has_checkpoint)
         end_at = min(start_at + window, now)
-        start_label = format_time(start_at)
-        end_label = format_time(end_at)
-        sql = render_sql(query_template, start_at, end_at)
-
-        notice(f"Starting {table['table_name']} {mode} window: {start_label} -> {end_label}")
-        log(f"::group::{table['table_name']} {mode}: {start_label} to {end_label}")
-        log(f"Mode: {mode}")
-        log(f"Timeframe start: {start_label}")
-        log(f"Timeframe end:   {end_label}")
-
-        execution_id = execute_sql(sql, table.get("performance"), api_key)
-        log(f"Dune execution ID: {execution_id}")
-        rows = fetch_all_rows(execution_id, api_key)
-        result = insert_rows(table, namespace, rows, api_key)
-        rows_written = result.get("rows_written", len(rows))
-
-        log(f"Rows inserted: {rows_written}")
-        log("::endgroup::")
-        notice(f"Finished {table['table_name']} {mode} window: {start_label} -> {end_label}; inserted {rows_written} rows")
-        append_summary(f"| {mode} | `{start_label}` | `{end_label}` | `{execution_id}` | {rows_written} |")
-
+        ingest_window(table, query_template, namespace, api_key, start_at, end_at, mode)
         start_at = end_at
         write_checkpoint(state_path, table, start_at)
         has_checkpoint = True
