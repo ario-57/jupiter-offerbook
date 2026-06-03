@@ -16,6 +16,8 @@ DEFAULT_BACKFILL_WINDOW_DAYS = 5
 DEFAULT_REFRESH_WINDOW_DAYS = 1
 POLL_SECONDS = 10
 MAX_POLLS = 180
+RESULT_PAGE_LIMIT = 1000
+MAX_RESULT_PAGES = 1
 
 
 def parse_time(value):
@@ -124,17 +126,17 @@ def wait_for_execution(execution_id, api_key):
 def fetch_all_rows(execution_id, api_key):
     wait_for_execution(execution_id, api_key)
 
-    offset = 0
-    rows = []
-
-    while True:
-        query = urlencode({"limit": 1000, "offset": offset})
-        result = request("GET", f"/execution/{execution_id}/results?{query}", api_key)
-        rows.extend(result.get("result", {}).get("rows", []))
-        next_offset = result.get("next_offset")
-        if next_offset is None:
-            return rows
-        offset = next_offset
+    query = urlencode({"limit": RESULT_PAGE_LIMIT, "offset": 0})
+    result = request("GET", f"/execution/{execution_id}/results?{query}", api_key)
+    rows = result.get("result", {}).get("rows", [])
+    next_offset = result.get("next_offset")
+    if next_offset is not None:
+        raise RuntimeError(
+            f"Execution {execution_id} returned more than {RESULT_PAGE_LIMIT} rows. "
+            f"Stopping after {MAX_RESULT_PAGES} result page to keep this execution within the 10-credit result-read target. "
+            "Use a smaller ingestion window for this table before rerunning."
+        )
+    return rows
 
 
 def rows_to_csv(rows, columns, inserted_at):
